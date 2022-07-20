@@ -1,0 +1,22 @@
+cabal-version:      2.4
+name:               persistent-stm
+version:            0.1.0.0
+synopsis:           STM transactions involving persistent storage
+description:        While Haskell's STM monad allows you to execute code
+                    transactionally, it does not allow you to persist the state
+                    on disk.  This package implements a persistent storage
+                    bridge that runs inside the already existing STM monad.
+
+-- bug-reports: 
+
+license:            BSD-3-Clause
+author:             Chris Smith
+maintainer:         cdsmith@gmail.com
+category:           Database
+extra-source-files: CHANGELOG.md
+
+library
+    exposed-modules:  PersistentSTM.DB
+    build-depends:    base ^>=4.16.1.0
+    hs-source-dirs:   src
+    default-language: Haskell2010
