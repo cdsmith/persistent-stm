@@ -145,7 +145,7 @@ instance DBStorable a => DBStorable [a] where
   encode = Binary.encode . fmap encode
   decode db = traverse (decode db) . Binary.decode
 
--- | Internal state of a 'DBRef'.  'Loading' means that the value is already
+-- | Internal state of a 'DBRef'.  Loading means that the value is already
 -- being loaded from persistent storage in a different thread, so the current
 -- transaction can just retry to wait for it to load.
 data Possible a = Loading | Missing | Present a
@@ -175,7 +175,7 @@ data Persistence = Persistence
     persistentFinish :: IO ()
   }
 
--- A currently open database in which 'DBRef's can be read and written.  See
+-- | A currently open database in which 'DBRef's can be read and written.  See
 -- 'openDB', 'closeDB', and 'withDB' to manage 'DB' values.
 data DB = DB
   { -- | Cached 'TVar's corresponding to 'DBRef's that are already loading or
@@ -187,7 +187,7 @@ data DB = DB
     -- | Collection of dirty values that need to be written.  Only the
     -- 'ByteString' from the value is needed, but keeping the 'TVar' as well
     -- ensures that the 'TVar' won't be garbage collected and removed from
-    -- 'dbRefs', which guarantees the value won't be read again until after the
+    -- dbRefs, which guarantees the value won't be read again until after the
     -- write is complete.  This is needed for consistency.
     dbDirty :: TVar (Map String (SomeTVar, Maybe ByteString)),
     -- | The persistence that is used for this database.
@@ -201,7 +201,7 @@ data DB = DB
     dbClosed :: TVar Bool
   }
 
--- A reference to persistent data from some 'DB' that can be accessed in 'STM'
+-- | A reference to persistent data from some 'DB' that can be accessed in 'STM'
 -- transaction.  @'DBRef' a@ is similar to @'TVar ('Maybe' a)@, except that
 -- values exist in persistent storage as well as in memory.
 data DBRef a = DBRef DB String (TVar (Possible a))
