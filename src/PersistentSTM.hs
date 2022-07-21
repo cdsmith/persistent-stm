@@ -24,18 +24,19 @@
 -- access the persistent storage.  You may not even use a single-writer,
 -- multiple-reader architecture, because consistency guarantees for reads, as
 -- well, depend on all writes happening in the current process.
-module PersistentSTM.DB
+module PersistentSTM
   ( DB,
     openDB,
     closeDB,
     withDB,
-    checkWriteQueue,
+    waitForMaxBacklog,
+    synchronously,
     DBRef,
     DBStorable (..),
     getDBRef,
     readDBRef,
     writeDBRef,
-    delDBRef,
+    deleteDBRef,
     Persistence (..),
     filePersistence,
   )
@@ -51,6 +52,7 @@ import Control.Concurrent.STM
   ( STM,
     TVar,
     atomically,
+    modifyTVar,
     newTVar,
     newTVarIO,
     readTVar,
@@ -65,6 +67,7 @@ import qualified Data.Binary as Binary
 import Data.Bool (bool)
 import qualified Data.ByteString as BS
 import Data.ByteString.Lazy (ByteString)
+import qualified Data.ByteString.Lazy as LBS
 import Data.ByteString.Short (ShortByteString)
 import Data.Int (Int16, Int32, Int64, Int8)
 import Data.Map (Map)
@@ -139,8 +142,8 @@ instance DBStorable ByteString
 instance DBStorable ShortByteString
 
 instance DBStorable a => DBStorable [a] where
-    encode = Binary.encode . fmap encode
-    decode db = traverse (decode db) . Binary.decode
+  encode = Binary.encode . fmap encode
+  decode db = traverse (decode db) . Binary.decode
 
 -- | Internal state of a 'DBRef'.  'Loading' means that the value is already
 -- being loaded from persistent storage in a different thread, so the current
@@ -178,6 +181,9 @@ data DB = DB
   { -- | Cached 'TVar's corresponding to 'DBRef's that are already loading or
     -- loaded.
     dbRefs :: SMap.Map String (TypeRep, Weak SomeTVar),
+    -- | The last written generation number, used to find out when writes are
+    -- committed.
+    dbGeneration :: TVar Natural,
     -- | Collection of dirty values that need to be written.  Only the
     -- 'ByteString' from the value is needed, but keeping the 'TVar' as well
     -- ensures that the 'TVar' won't be garbage collected and removed from
@@ -231,11 +237,11 @@ filePersistence dir = do
           { persistentRead = \key -> do
               ex <- doesFileExist (dir </> key)
               if ex
-                then Just <$> BS.fromStrict <$> BS.readFile (dir </> key)
+                then Just <$> LBS.fromStrict <$> BS.readFile (dir </> key)
                 else return Nothing,
             persistentWrite = \dirtyMap -> forM_ (Map.toList dirtyMap) $
               \(key, mbs) -> case mbs of
-                Just bs -> BS.writeFile (dir </> key) (BS.toStrict bs)
+                Just bs -> BS.writeFile (dir </> key) (LBS.toStrict bs)
                 Nothing -> removeFile (dir </> key),
             persistentFinish = unlockFile lock
           }
@@ -245,6 +251,7 @@ filePersistence dir = do
 openDB :: Persistence -> IO DB
 openDB persistence = do
   refs <- SMap.newIO
+  generation <- newTVarIO 0
   dirty <- newTVarIO Map.empty
   closing <- newTVarIO False
   closed <- newTVarIO False
@@ -257,11 +264,13 @@ openDB persistence = do
         when (not (Map.null d)) $ writeTVar dirty Map.empty
         return (d, c)
       when (not (Map.null d)) $ persistentWrite persistence (snd <$> d)
+      atomically $ modifyTVar generation (+ 1)
       return (not c)
     atomically $ writeTVar closed True
   let db =
         DB
           { dbRefs = refs,
+            dbGeneration = generation,
             dbDirty = dirty,
             dbPersistence = persistence,
             dbClosing = closing,
@@ -280,23 +289,47 @@ closeDB db = do
 -- | Runs an action with a 'DB' open.  The 'DB' will be closed when the action
 -- is finished.  The 'DB' value should not be used after the action has
 -- returned.
-withDB :: Persistence -> (DB -> IO ()) -> IO ()
+withDB :: Persistence -> (DB -> IO a) -> IO a
 withDB persistence f = bracket (openDB persistence) closeDB f
 
 -- | Check that there are at most the given number of queued writes to the
 -- database, and retries the transaction if so.  Adding this to the beginning of
 -- your transactions can help prevent writes from falling too far behind the
--- live data, and can reduce memory usage (because 'DBRef's no longer need to be
--- retained once they are written to disk).
-checkWriteQueue :: DB -> Int -> STM ()
-checkWriteQueue db maxLen = do
+-- live data.  Prioritizing writes this way can also reduce memory usage,
+-- because unreachable 'DBRef's no longer need to be retained once they are
+-- written to disk.
+waitForMaxBacklog :: DB -> Int -> STM ()
+waitForMaxBacklog db maxLen = do
   dirty <- readTVar (dbDirty db)
   when (Map.size dirty > maxLen) retry
 
+-- | Throws an error if the given 'DB' is closing.  This prevents more work from
+-- being added to the queue when we're supposed to be waiting for the last
+-- writes to flush out.
 failIfClosing :: DB -> STM ()
 failIfClosing db = do
   c <- readTVar (dbClosing db)
   when c $ error "DB is closing"
+
+-- | Atomically performs an STM transaction just like 'atomically', but also
+-- waits for any changes it might have observed in the 'DB' to be written to
+-- persistent storage before returning.  This guarantees that a transaction
+-- whose results were observed will not be rolled back if the program crashes.
+synchronously :: DB -> STM a -> IO a
+synchronously db txn = do
+  (result, gen) <- atomically $ do
+    result <- txn
+    gen <- readTVar (dbGeneration db)
+    dirty <- readTVar (dbDirty db)
+    if Map.null dirty
+      then return (result, Nothing)
+      else return (result, Just (gen + 1))
+  case gen of
+    Just n ->
+      atomically $
+        readTVar (dbGeneration db) >>= bool retry (return ()) . (>= n)
+    _ -> return ()
+  return result
 
 -- | Retrieves a 'DBRef' from a 'DB' for the given key.  Throws an exception if
 -- the 'DBRef' requested has a different type from a previous time the key was
@@ -366,8 +399,8 @@ writeDBRef (DBRef db dbkey ref) a = do
 
 -- | Deletes the value stored in a 'DBRef'.  The delete will be persisted to
 -- storage soon, but not synchronously.
-delDBRef :: DBStorable a => DBRef a -> STM ()
-delDBRef (DBRef db dbkey ref) = do
+deleteDBRef :: DBStorable a => DBRef a -> STM ()
+deleteDBRef (DBRef db dbkey ref) = do
   failIfClosing db
   writeTVar ref Missing
   d <- readTVar (dbDirty db)

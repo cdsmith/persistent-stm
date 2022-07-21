@@ -22,6 +22,13 @@ The persistence is limited in the following senses:
   a `Persistence` implementation built on a transactional storage layer such as
   a database.
 
+The persistence essentially works as a key-value store.  The key is a `String`,
+and the value can be of any type that implements `DBStorable`.  The `DBStorable`
+class works like `Binary` or other serialization classes, except that it's
+designed to have access to the `DB` so that it can contain other `DBRef`s.  This
+way, at runtime, you can maintain complex data structures that point directly to
+each other, but are persisted via their keys.
+
 # Quick Start
 
 A simple example of using `persistent-stm` follows:
@@ -45,3 +52,36 @@ main = do
         putStrLn $ "Number of times program was run: " ++ show n
 ```
 
+Here, `filePersistence` creates a `Persistence` implementation that stores data
+in a directory called `./my-data` on disk.  The `withDB` function brackets the
+portion of code that uses the directory for storage.  During the execution of
+`withDB`, one can use `db` to read and write persistent values inside of STM
+transactions.  That is done using `getDBRef`, `readDBRef`, `writeDBRef`, and
+`deleteDBRef`.
+
+# FAQ
+
+## Does this work reliably?
+
+I'm publishing this now to get more feedback, but I am confident that within the
+limitations described above, this is a correct implementation.  Until there is a
+broader community consensus, I'll still label this experimental.
+
+## How does this compare with the TCache package?
+
+The implementation here was inspired by TCache, and involves some similar ideas.
+I was motivated to implement this package because of several details in which
+use of TCache was hard to justify.  These include:
+
+* Playing too fast and loose with unsafe operations for my taste.
+* Far too much use of global state and overlapping instances.
+* Many more possible states making it hard to reason about the correctness of
+  the implementation.
+* Failure to build with newer GHC versions.
+
+All things put together, I reached the conclusion that I could trust a new
+implementation more than TCache.
+
+Note that TCache has more features that this package.  I don't intend to
+implement features like triggers, indexes, and so on, all of which can be
+implemented on top of the basic functionality in this package if desired.
