@@ -21,6 +21,8 @@ The persistence is limited in the following senses:
   terminated with a power outage, system crash, etc.  This can be fixed by using
   a `Persistence` implementation built on a transactional storage layer such as
   a database.
+* Consistency is not guaranteed between the different persistent storage if
+  multiple `DB`s are used in the same program.
 
 The persistence essentially works as a key-value store.  The key is a `String`,
 and the value can be of any type that implements `DBStorable`.  The `DBStorable`
