@@ -1,6 +1,6 @@
 # persistent-stm - STM transactions involving persistent storage
 
-[![GitHub CI](https://github.com/cdsmith/persistent-stm/workflows/CI/badge.svg)](https://github.com/cdsmith/persistent-stm/actions)
+[![CI](https://github.com/cdsmith/persistent-stm/actions/workflows/ci.yml/badge.svg)](https://github.com/cdsmith/persistent-stm/actions/workflows/ci.yml)
 [![Hackage](https://img.shields.io/hackage/v/persistent-stm)](https://hackage.haskell.org/package/persistent-stm)
 
 Haskell's `STM` monad implements composable transactions on in-memory state,
