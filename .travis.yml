@@ -6,6 +6,9 @@ ghc:
   - "8.10.4"
   - "9.0.1"
 
+before_install:
+  - ls /opt/ghc
+
 install:
   - cabal build --only-dependencies --enable-tests
 
