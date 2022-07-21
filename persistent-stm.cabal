@@ -1,6 +1,6 @@
 cabal-version:      2.4
 name:               persistent-stm
-version:            0.1.0.1
+version:            0.1.0.2
 synopsis:           STM transactions involving persistent storage
 description:        While Haskell's STM monad allows you to execute code
                     transactionally, it does not allow you to persist the state
@@ -15,7 +15,7 @@ license-file:       LICENSE
 author:             Chris Smith <cdsmith@gmail.com>
 maintainer:         Chris Smith <cdsmith@gmail.com>
 
-extra-source-files: CHANGELOG.md
+extra-source-files: CHANGELOG.md, README.md
 
 tested-with:        GHC == 8.6.5 || == 8.8.4 || == 8.10.7 || == 9.0.1 || == 9.2.3
 
