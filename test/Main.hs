@@ -16,7 +16,7 @@ import PersistentSTM
     writeDBRef,
   )
 import System.IO.Temp (withSystemTempDirectory)
-import Test.Hspec (Spec, describe, hspec, it, shouldBe)
+import Test.Hspec (Spec, describe, hspec, it, shouldBe, shouldReturn)
 
 endToEndSpec :: Spec
 endToEndSpec =
@@ -51,8 +51,7 @@ endToEndSpec =
         synchronously db $ do
           ref <- getDBRef db "my-key"
           writeDBRef ref ()
-        isWritten <- readIORef written
-        isWritten `shouldBe` True
+        readIORef written `shouldReturn` True
 
       writeIORef written False
 
@@ -60,8 +59,8 @@ endToEndSpec =
         atomically $ do
           ref <- getDBRef db "my-key"
           writeDBRef ref ()
-        isWritten <- readIORef written
-        isWritten `shouldBe` False
+        readIORef written `shouldReturn` False
+      readIORef written `shouldReturn` True
 
 main :: IO ()
 main = hspec $ do
