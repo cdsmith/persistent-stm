@@ -1,5 +1,4 @@
 {-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE LambdaCase #-}
@@ -60,7 +59,7 @@ import Control.Concurrent.STM
     writeTVar,
   )
 import Control.Exception (bracket)
-import Control.Monad (forM_, when)
+import Control.Monad (forM_, when, unless)
 import Control.Monad.Extra (whileM)
 import Data.Binary (Binary)
 import qualified Data.Binary as Binary
@@ -237,7 +236,7 @@ filePersistence dir = do
           { persistentRead = \key -> do
               ex <- doesFileExist (dir </> key)
               if ex
-                then Just <$> LBS.fromStrict <$> BS.readFile (dir </> key)
+                then Just . LBS.fromStrict <$> BS.readFile (dir </> key)
                 else return Nothing,
             persistentWrite = \dirtyMap -> forM_ (Map.toList dirtyMap) $
               \(key, mbs) -> case mbs of
@@ -261,9 +260,9 @@ openDB persistence = do
         c <- readTVar closing
         d <- readTVar dirty
         when (not c && Map.null d) retry
-        when (not (Map.null d)) $ writeTVar dirty Map.empty
+        unless (Map.null d) $ writeTVar dirty Map.empty
         return (d, c)
-      when (not (Map.null d)) $ persistentWrite persistence (snd <$> d)
+      unless (Map.null d) $ persistentWrite persistence (snd <$> d)
       atomically $ modifyTVar generation (+ 1)
       return (not c)
     atomically $ writeTVar closed True
@@ -290,7 +289,7 @@ closeDB db = do
 -- is finished.  The 'DB' value should not be used after the action has
 -- returned.
 withDB :: Persistence -> (DB -> IO a) -> IO a
-withDB persistence f = bracket (openDB persistence) closeDB f
+withDB persistence = bracket (openDB persistence) closeDB
 
 -- | Check that there are at most the given number of queued writes to the
 -- database, and retries the transaction if so.  Adding this to the beginning of
